@@ -20,7 +20,7 @@
           inherit overlays;
         };
         
-        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./api/rust-toolchain.toml;
       in
       {
         devShells.default = pkgs.mkShell {
