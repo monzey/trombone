@@ -1,12 +1,16 @@
 import { Provider } from './components/ui/provider'
-import { AbsoluteCenter } from '@chakra-ui/react'
+import { ApiProvider } from '@/context/ApiProvider'
+import { BrowserRouter } from 'react-router'
+import { Router } from './Router'
 
 function App() {
   return (
     <Provider>
-      <AbsoluteCenter>
-        React + Vite + Chakra UI + TypeScript
-      </AbsoluteCenter>
+      <BrowserRouter>
+        <ApiProvider>
+          <Router />
+        </ApiProvider>
+      </BrowserRouter>
     </Provider>
   )
 }
