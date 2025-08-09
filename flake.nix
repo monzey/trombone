@@ -1,5 +1,6 @@
 {
-  description = "A very basic flake";
+  description = "Trombone API & UI development environment";
+
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -33,6 +34,8 @@
             pkgs.pkg-config
             pkgs.openssl
             pkgs.cargo-watch
+            pkgs.nodejs_22
+            pkgs.pnpm
           ];
         };
       }
