@@ -1,4 +1,4 @@
-use crate::model::request::{CreateRequestPayload, Request};
+use crate::model::request::{CreateRequestPayload, UpdateRequestPayload, Request};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -63,17 +63,35 @@ pub async fn create(
 pub async fn update(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
-    Json(payload): Json<CreateRequestPayload>,
+    Json(payload): Json<UpdateRequestPayload>,
 ) -> Result<Json<Request>, StatusCode> {
+    let mut request = sqlx::query_as!(Request, "SELECT * FROM requests WHERE id = $1", id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    if let Some(title) = payload.title {
+        request.title = title;
+    }
+
+    if let Some(description) = payload.description {
+        request.description = description;
+    }
+
+    if let Some(status) = payload.status {
+        request.status = status;
+    }
+
     let request = sqlx::query_as!(
         Request,
         r#"
         UPDATE requests
-        SET title = $1, description = $2, status = 'updated'
-        WHERE id = $3 RETURNING *
+        SET title = $1, description = $2, status = $3, updated_at = now()
+        WHERE id = $4 RETURNING *
         "#,
-        payload.title,
-        payload.description,
+        request.title,
+        request.description,
+        request.status,
         id
     )
     .fetch_one(&pool)

@@ -25,7 +25,7 @@ pub struct CreateRequestPayload {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateRequestPayload {
-    pub title: String,
-    pub description: String,
-    pub status: String, // e.g., "open", "in_progress", "completed"
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>, // e.g., "open", "in_progress", "completed"
 }

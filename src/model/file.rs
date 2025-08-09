@@ -23,3 +23,11 @@ pub struct CreateFilePayload {
     pub file_size: i64,
     pub mime_type: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateFilePayload {
+    pub request_id: Option<Uuid>,
+    pub storage_key: Option<String>,
+    pub file_size: Option<i64>,
+    pub mime_type: Option<String>,
+}

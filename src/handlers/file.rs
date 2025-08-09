@@ -1,4 +1,4 @@
-use crate::model::file::{CreateFilePayload, File};
+use crate::model::file::{CreateFilePayload, UpdateFilePayload, File};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -64,13 +64,41 @@ pub async fn create(
 pub async fn update(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
-    Json(payload): Json<CreateFilePayload>, // Placeholder
+    Json(payload): Json<UpdateFilePayload>,
 ) -> Result<Json<File>, StatusCode> {
-    // Placeholder implementation
+    let mut file = sqlx::query_as!(File, "SELECT * FROM files WHERE id = $1", id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    if let Some(request_id) = payload.request_id {
+        file.request_id = request_id;
+    }
+
+    if let Some(storage_key) = payload.storage_key {
+        file.storage_key = storage_key;
+    }
+
+    if let Some(file_size) = payload.file_size {
+        file.file_size = file_size;
+    }
+
+    if let Some(mime_type) = payload.mime_type {
+        file.mime_type = mime_type;
+    }
+
     let file = sqlx::query_as!(
         File,
-        "UPDATE files SET storage_key = $1 WHERE id = $2 RETURNING *",
-        "new_placeholder_key", // placeholder
+        r#"
+        UPDATE files
+        SET request_id = $1, storage_key = $2, file_size = $3, mime_type = $4
+        WHERE id = $5
+        RETURNING id, request_id, storage_key, file_size, mime_type, created_at, updated_at
+        "#,
+        file.request_id,
+        file.storage_key,
+        file.file_size,
+        file.mime_type,
         id
     )
     .fetch_one(&pool)

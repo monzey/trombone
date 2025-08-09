@@ -65,15 +65,38 @@ pub async fn update(
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateCollectionPayload>,
 ) -> Result<Json<Collection>, StatusCode> {
+    let mut collection = sqlx::query_as!(Collection, "SELECT * FROM collections WHERE id = $1", id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    if let Some(title) = payload.title {
+        collection.title = title;
+    }
+
+    if let Some(status) = payload.status {
+        collection.status = status;
+    }
+
+    if let Some(access_token) = payload.access_token {
+        collection.access_token = access_token;
+    }
+
+    if let Some(expires_at) = payload.expires_at {
+        collection.expires_at = expires_at;
+    }
+
     let collection = sqlx::query_as!(
         Collection,
         r#"
         UPDATE collections
-        SET title = $1, updated_at = now(), status = $2
-        WHERE id = $3 RETURNING *
+        SET title = $1, status = $2, access_token = $3, expires_at = $4, updated_at = now()
+        WHERE id = $5 RETURNING *
         "#,
-        payload.title,
-        payload.status,
+        collection.title,
+        collection.status,
+        collection.access_token,
+        collection.expires_at,
         id
     )
     .fetch_one(&pool)
