@@ -1,4 +1,5 @@
-use crate::model::client::{Client, CreateClientPayload};
+use crate::model::client::{Client, ClientResponse, CreateClientPayload, UpdateClientPayload};
+use crate::model::firm::Firm;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -7,16 +8,93 @@ use axum::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+// GET /clients
+pub async fn get_all(
+    State(pool): State<PgPool>,
+) -> Result<Json<Vec<ClientResponse>>, StatusCode> {
+    let clients = sqlx::query!(
+        r#"
+        SELECT
+            c.id, c.company_name, c.email, c.created_at, c.updated_at,
+            f.id as "firm_id", f.name as "firm_name", f.created_at as "firm_created_at", f.updated_at as "firm_updated_at"
+        FROM clients c
+        JOIN firms f ON c.firm_id = f.id
+        "#
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Failed to fetch clients: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let client_responses = clients
+        .into_iter()
+        .map(|row| ClientResponse {
+            id: row.id,
+            company_name: row.company_name,
+            email: row.email,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            firm: Firm {
+                id: row.firm_id,
+                name: row.firm_name,
+                created_at: row.firm_created_at,
+                updated_at: row.firm_updated_at,
+            },
+        })
+        .collect();
+
+    Ok(Json(client_responses))
+}
+
+// GET /clients/:id
+pub async fn get_one(
+    State(pool): State<PgPool>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ClientResponse>, StatusCode> {
+    let client = sqlx::query!(
+        r#"
+        SELECT
+            c.id, c.company_name, c.email, c.created_at, c.updated_at,
+            f.id as "firm_id", f.name as "firm_name", f.created_at as "firm_created_at", f.updated_at as "firm_updated_at"
+        FROM clients c
+        JOIN firms f ON c.firm_id = f.id
+        WHERE c.id = $1
+        "#,
+        id
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let client_response = ClientResponse {
+        id: client.id,
+        company_name: client.company_name,
+        email: client.email,
+        created_at: client.created_at,
+        updated_at: client.updated_at,
+        firm: Firm {
+            id: client.firm_id,
+            name: client.firm_name,
+            created_at: client.firm_created_at,
+            updated_at: client.firm_updated_at,
+        },
+    };
+
+    Ok(Json(client_response))
+}
+
+// POST /clients
 pub async fn create(
     State(pool): State<PgPool>,
     Json(payload): Json<CreateClientPayload>,
-) -> Result<Json<Client>, StatusCode> {
-    let client = sqlx::query_as!(
-        Client,
+) -> Result<Json<ClientResponse>, StatusCode> {
+    let client = sqlx::query!(
         r#"
         INSERT INTO clients (firm_id, company_name, email)
         VALUES ($1, $2, $3)
-        RETURNING id, firm_id, company_name, email, created_at, updated_at
+        RETURNING id
         "#,
         payload.firm_id,
         payload.company_name,
@@ -29,52 +107,46 @@ pub async fn create(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(client))
+    get_one(State(pool), Path(client.id)).await
 }
 
-pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<Client>>, StatusCode> {
-    let clients = sqlx::query_as!(Client, "SELECT * FROM clients")
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| {
-            eprintln!("Failed to fetch clients: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    Ok(Json(clients))
-}
-
-pub async fn get_one(
+// PATCH /clients/:id
+pub async fn update(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
-) -> Result<Json<Client>, StatusCode> {
-    let client = sqlx::query_as!(Client, "SELECT * FROM clients WHERE id = $1", id)
+    Json(payload): Json<UpdateClientPayload>,
+) -> Result<Json<ClientResponse>, StatusCode> {
+    let mut client = sqlx::query_as!(Client, "SELECT * FROM clients WHERE id = $1", id)
         .fetch_one(&pool)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    Ok(Json(client))
-}
+    if let Some(company_name) = payload.company_name {
+        client.company_name = company_name;
+    }
 
-pub async fn update(
-    State(pool): State<PgPool>,
-    Path(id): Path<Uuid>,
-    Json(payload): Json<CreateClientPayload>, // Using Create for now
-) -> Result<Json<Client>, StatusCode> {
-    let client = sqlx::query_as!(
-        Client,
-        "UPDATE clients SET company_name = $1, email = $2 WHERE id = $3 RETURNING *",
-        payload.company_name,
-        payload.email,
+    if let Some(email) = payload.email {
+        client.email = email;
+    }
+
+    sqlx::query!(
+        r#"
+        UPDATE clients
+        SET company_name = $1, email = $2, updated_at = now()
+        WHERE id = $3
+        "#,
+        client.company_name,
+        client.email,
         id
     )
-    .fetch_one(&pool)
+    .execute(&pool)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    Ok(Json(client))
+    get_one(State(pool), Path(id)).await
 }
 
+// DELETE /clients/:id
 pub async fn delete(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,

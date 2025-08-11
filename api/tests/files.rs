@@ -2,58 +2,22 @@ use axum::{
     body::Body,
     http::{self, Request, StatusCode},
 };
-use http_body_util::BodyExt;
-use serde_json::{json, Value};
-use tower::ServiceExt; // for `oneshot`
+use http_body_util::BodyExt; 
+use tower::ServiceExt; 
+
+use trombone::model::file::FileResponse;
 
 mod common;
 
-async fn create_test_file(app: &axum::Router) -> Value {
+#[tokio::test]
+async fn test_get_one_file() {
+    let app = common::setup().await;
+
+    // IDs from seed.sql
+    let file_id = "f1a2b3c4-5d6e-7f8d-9f0f-f1b2d3a4b5e6";
     let request_id = "d1e2f3a4-5b6c-7d8e-9f0a-b1c2d3e4f5f6";
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(http::Method::POST)
-                .uri("/files")
-                .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "request_id": request_id,
-                        "storage_key": "some_key",
-                        "file_size": 12345,
-                        "mime_type": "application/pdf"
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    serde_json::from_slice(&body).unwrap()
-}
-
-#[tokio::test]
-async fn test_create_file() {
-    let app = common::setup().await;
-    let body = create_test_file(&app).await;
-
-    assert_eq!(body["storage_key"], "some_key");
-    assert!(body["id"].is_string());
-}
-
-#[tokio::test]
-async fn test_get_file() {
-    let app = common::setup().await;
-    let file = create_test_file(&app).await;
-    let file_id = file["id"].as_str().unwrap();
-
-    let response = app
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
@@ -65,23 +29,31 @@ async fn test_get_file() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let body: Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(body["id"], file_id);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let file_response: FileResponse = serde_json::from_slice(&body)
+        .expect("Failed to deserialize FileResponse");
+
+    // Assert top-level file fields
+    assert_eq!(file_response.id.to_string(), file_id);
+    assert_eq!(file_response.file_name, "default_file.txt"); // Corrected name
+
+    // Assert nested request ID
+    assert_eq!(file_response.request.id.to_string(), request_id);
 }
 
 #[tokio::test]
-async fn test_get_all_files() {
+async fn test_get_all_files_for_request() {
     let app = common::setup().await;
-    create_test_file(&app).await;
-    create_test_file(&app).await;
+
+    // This ID is from the seed.sql file
+    let request_id = "d1e2f3a4-5b6c-7d8e-9f0a-b1c2d3e4f5f6";
 
     let response = app
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
-                .uri("/files")
+                .uri(format!("/requests/{}/files", request_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -89,72 +61,35 @@ async fn test_get_all_files() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let body: Vec<Value> = serde_json::from_slice(&body).unwrap();
 
-    assert!(body.len() >= 2);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let files: Vec<FileResponse> = serde_json::from_slice(&body)
+        .expect("Failed to deserialize Vec<FileResponse>");
+
+    // The seed script creates ONE file for this request
+    assert_eq!(files.len(), 1); // Corrected length
+
+    // Spot-check the first file
+    let first_file = &files[0];
+    assert_eq!(first_file.request.id.to_string(), request_id);
+    assert_eq!(first_file.file_name, "default_file.txt");
 }
 
 #[tokio::test]
-async fn test_update_file() {
+async fn test_get_one_file_not_found() {
     let app = common::setup().await;
-    let file = create_test_file(&app).await;
-    let file_id = file["id"].as_str().unwrap();
+    let non_existent_id = "00000000-0000-0000-0000-000000000000";
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method(http::Method::PATCH)
-                .uri(format!("/files/{}", file_id))
-                .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "storage_key": "updated_key"
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let body: Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(body["storage_key"], "updated_key");
-}
-
-#[tokio::test]
-async fn test_delete_file() {
-    let app = common::setup().await;
-    let file = create_test_file(&app).await;
-    let file_id = file["id"].as_str().unwrap();
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(http::Method::DELETE)
-                .uri(format!("/files/{}", file_id))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-
-    // Verify it's gone
     let response = app
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
-                .uri(format!("/files/{}", file_id))
+                .uri(format!("/files/{}", non_existent_id))
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
+
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

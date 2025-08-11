@@ -17,3 +17,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO requests (id, collection_id, title, description, status)
 VALUES ('d1e2f3a4-5b6c-7d8e-9f0a-b1c2d3e4f5f6', 'c1d2e3f4-5a6b-7c8d-9e0f-a1b2c3d4e5f6', 'Default Request', 'This is a default request description.', 'pending')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO files (id, request_id, file_name, storage_key, file_size, mime_type)
+VALUES ('f1a2b3c4-5d6e-7f8d-9f0f-f1b2d3a4b5e6', 'd1e2f3a4-5b6c-7d8e-9f0a-b1c2d3e4f5f6', 'default_file.txt', 'storage_key_example', 1024, 'text/plain')
+ON CONFLICT (id) DO NOTHING;

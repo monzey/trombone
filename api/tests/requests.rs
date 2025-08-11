@@ -4,7 +4,7 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
-use tower::ServiceExt; // for `oneshot`
+use tower::ServiceExt;
 
 mod common;
 

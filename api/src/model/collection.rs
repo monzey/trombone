@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::model::client::Client;
-use crate::model::user::User;
+use crate::model::client::ClientResponse;
+use crate::model::user::UserResponse;
 
 // Represents a specific request for a set of documents (e.g., "Q3 2025 VAT")
 
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, FromRow, Clone)]
 pub struct Collection {
     pub id: Uuid,
     pub client_id: Uuid,
@@ -21,11 +21,11 @@ pub struct Collection {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CollectionResponse {
     pub id: Uuid,
-    pub client: Client,
-    pub user: User,
+    pub client: ClientResponse,
+    pub user: UserResponse,
     pub title: String,
     pub status: String,
     pub access_token: String,

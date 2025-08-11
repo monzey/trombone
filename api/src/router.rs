@@ -1,5 +1,5 @@
 use axum::{
-    routing::{delete, get, patch, post},
+    routing::{get, post},
     Router,
 };
 
@@ -13,8 +13,7 @@ use crate::handlers::{
         get_one as get_one_collection, update as update_collection,
     },
     file::{
-        create as create_file, delete as delete_file, get_all as get_all_files,
-        get_one as get_one_file, update as update_file,
+        delete as delete_file, get_all_for_request, get_one as get_one_file, upload as upload_file,
     },
     firm::{
         create as create_firm, delete as delete_firm, get_all as get_all_firms,
@@ -34,46 +33,52 @@ use sqlx::PgPool;
 
 pub fn router(pool: PgPool) -> Router {
     let clients_router = Router::new()
-        .route("/", post(create_client))
-        .route("/", get(get_all_clients))
-        .route("/:id", get(get_one_client))
-        .route("/:id", patch(update_client))
-        .route("/:id", delete(delete_client));
+        .route("/", post(create_client).get(get_all_clients))
+        .route(
+            "/:id",
+            get(get_one_client)
+                .patch(update_client)
+                .delete(delete_client),
+        );
 
     let users_router = Router::new()
-        .route("/", post(create_user))
-        .route("/", get(get_all_users))
-        .route("/:id", get(get_one_user))
-        .route("/:id", patch(update_user))
-        .route("/:id", delete(delete_user));
+        .route("/", post(create_user).get(get_all_users))
+        .route(
+            "/:id",
+            get(get_one_user).patch(update_user).delete(delete_user),
+        );
 
     let firms_router = Router::new()
-        .route("/", post(create_firm))
-        .route("/", get(get_all_firms))
-        .route("/:id", get(get_one_firm))
-        .route("/:id", patch(update_firm))
-        .route("/:id", delete(delete_firm));
+        .route("/", post(create_firm).get(get_all_firms))
+        .route(
+            "/:id",
+            get(get_one_firm).patch(update_firm).delete(delete_firm),
+        );
 
-    let files_router = Router::new()
-        .route("/", post(create_file))
-        .route("/", get(get_all_files))
-        .route("/:id", get(get_one_file))
-        .route("/:id", patch(update_file))
-        .route("/:id", delete(delete_file));
+    // Note: File routes are different. Upload is on a request, get_all is also on a request.
+    let files_router = Router::new().route("/:id", get(get_one_file).delete(delete_file));
 
     let requests_router = Router::new()
-        .route("/", post(create_request))
-        .route("/", get(get_all_requests))
-        .route("/:id", get(get_one_request))
-        .route("/:id", patch(update_request))
-        .route("/:id", delete(delete_request));
+        .route("/", post(create_request).get(get_all_requests))
+        .route(
+            "/:id",
+            get(get_one_request)
+                .patch(update_request)
+                .delete(delete_request),
+        )
+        .route(
+            "/:request_id/files",
+            get(get_all_for_request).post(upload_file),
+        );
 
     let collections_router = Router::new()
-        .route("/", post(create_collection))
-        .route("/", get(get_all_collections))
-        .route("/:id", get(get_one_collection))
-        .route("/:id", patch(update_collection))
-        .route("/:id", delete(delete_collection));
+        .route("/", post(create_collection).get(get_all_collections))
+        .route(
+            "/:id",
+            get(get_one_collection)
+                .patch(update_collection)
+                .delete(delete_collection),
+        );
 
     Router::new()
         .nest("/clients", clients_router)
@@ -84,3 +89,4 @@ pub fn router(pool: PgPool) -> Router {
         .nest("/collections", collections_router)
         .with_state(pool)
 }
+

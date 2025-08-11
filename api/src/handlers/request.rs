@@ -1,4 +1,5 @@
-use crate::model::request::{CreateRequestPayload, UpdateRequestPayload, Request};
+use crate::handlers::collection as collection_handler;
+use crate::model::request::{CreateRequestPayload, Request, RequestResponse, UpdateRequestPayload};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -8,42 +9,59 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 // GET /requests
-pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<Request>>, StatusCode> {
+pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<RequestResponse>>, StatusCode> {
+    // This is inefficient due to N+1, but simple. A real implementation would use a more complex query.
     let requests = sqlx::query_as!(Request, "SELECT * FROM requests")
         .fetch_all(&pool)
         .await
-        .map_err(|e| {
-            eprintln!("Failed to fetch requests: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(requests))
+    let mut responses = Vec::new();
+    for request in requests {
+        let response = get_one(State(pool.clone()), Path(request.id)).await?.0;
+        responses.push(response);
+    }
+
+    Ok(Json(responses))
 }
 
 // GET /requests/:id
 pub async fn get_one(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
-) -> Result<Json<Request>, StatusCode> {
+) -> Result<Json<RequestResponse>, StatusCode> {
     let request = sqlx::query_as!(Request, "SELECT * FROM requests WHERE id = $1", id)
         .fetch_one(&pool)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    Ok(Json(request))
+    let collection_response = collection_handler::get_one(State(pool), Path(request.collection_id))
+        .await?
+        .0;
+
+    let request_response = RequestResponse {
+        id: request.id,
+        collection: collection_response,
+        title: request.title,
+        description: request.description,
+        status: request.status,
+        created_at: request.created_at,
+        updated_at: request.updated_at,
+    };
+
+    Ok(Json(request_response))
 }
 
 // POST /requests
 pub async fn create(
     State(pool): State<PgPool>,
     Json(payload): Json<CreateRequestPayload>,
-) -> Result<Json<Request>, StatusCode> {
-    let request = sqlx::query_as!(
-        Request,
+) -> Result<Json<RequestResponse>, StatusCode> {
+    let request = sqlx::query!(
         r#"
         INSERT INTO requests (collection_id, title, description, status)
         VALUES ($1, $2, $3, 'pending')
-        RETURNING id, collection_id, title, description, status, created_at, updated_at
+        RETURNING id
         "#,
         payload.collection_id,
         payload.title,
@@ -56,7 +74,7 @@ pub async fn create(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(request))
+    get_one(State(pool), Path(request.id)).await
 }
 
 // PATCH /requests/:id
@@ -64,7 +82,7 @@ pub async fn update(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateRequestPayload>,
-) -> Result<Json<Request>, StatusCode> {
+) -> Result<Json<RequestResponse>, StatusCode> {
     let mut request = sqlx::query_as!(Request, "SELECT * FROM requests WHERE id = $1", id)
         .fetch_one(&pool)
         .await
@@ -75,30 +93,29 @@ pub async fn update(
     }
 
     if let Some(description) = payload.description {
-        request.description = description;
-    }
+            request.description = Some(description);
+        }
 
     if let Some(status) = payload.status {
         request.status = status;
     }
 
-    let request = sqlx::query_as!(
-        Request,
+    sqlx::query!(
         r#"
         UPDATE requests
         SET title = $1, description = $2, status = $3, updated_at = now()
-        WHERE id = $4 RETURNING *
+        WHERE id = $4
         "#,
         request.title,
         request.description,
         request.status,
         id
     )
-    .fetch_one(&pool)
+    .execute(&pool)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    Ok(Json(request))
+    get_one(State(pool), Path(id)).await
 }
 
 // DELETE /requests/:id
