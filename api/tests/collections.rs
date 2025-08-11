@@ -8,7 +8,8 @@ use tower::ServiceExt; // for `oneshot`
 
 mod common;
 
-async fn create_test_collection(app: &axum::Router) -> Value {
+async fn create_test_collection(app: &axum::Router, token: &str) -> Value {
+    // Add token parameter
     let client_id = "e2b1c3d4-5f6a-7b8c-9d0e-f1a2b3c4d5e6";
     let user_id = "b1c2d3e4-5f6a-7b8c-9d0e-f1a2b3c4d5e6";
 
@@ -19,6 +20,7 @@ async fn create_test_collection(app: &axum::Router) -> Value {
                 .method(http::Method::POST)
                 .uri("/collections")
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "client_id": client_id,
@@ -40,8 +42,8 @@ async fn create_test_collection(app: &axum::Router) -> Value {
 
 #[tokio::test]
 async fn test_create_collection() {
-    let app = common::setup().await;
-    let body = create_test_collection(&app).await;
+    let (app, token) = common::setup().await; // Destructure the tuple
+    let body = create_test_collection(&app, &token).await; // Pass token
 
     assert_eq!(body["title"], "Q3 2025 VAT");
     assert!(body["id"].is_string());
@@ -51,8 +53,8 @@ async fn test_create_collection() {
 
 #[tokio::test]
 async fn test_get_collection() {
-    let app = common::setup().await;
-    let collection = create_test_collection(&app).await;
+    let (app, token) = common::setup().await; // Destructure the tuple
+    let collection = create_test_collection(&app, &token).await; // Pass token
     let collection_id = collection["id"].as_str().unwrap();
 
     let response = app
@@ -60,6 +62,7 @@ async fn test_get_collection() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/collections/{}", collection_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -77,15 +80,16 @@ async fn test_get_collection() {
 
 #[tokio::test]
 async fn test_get_all_collections() {
-    let app = common::setup().await;
-    create_test_collection(&app).await;
-    create_test_collection(&app).await;
+    let (app, token) = common::setup().await; // Destructure the tuple
+    create_test_collection(&app, &token).await; // Pass token
+    create_test_collection(&app, &token).await; // Pass token
 
     let response = app
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri("/collections")
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -103,8 +107,8 @@ async fn test_get_all_collections() {
 
 #[tokio::test]
 async fn test_update_collection() {
-    let app = common::setup().await;
-    let collection = create_test_collection(&app).await;
+    let (app, token) = common::setup().await; // Destructure the tuple
+    let collection = create_test_collection(&app, &token).await; // Pass token
     let collection_id = collection["id"].as_str().unwrap();
 
     let response = app
@@ -113,6 +117,7 @@ async fn test_update_collection() {
                 .method(http::Method::PATCH)
                 .uri(format!("/collections/{}", collection_id))
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "title": "Q4 2025 VAT"
@@ -135,8 +140,8 @@ async fn test_update_collection() {
 
 #[tokio::test]
 async fn test_delete_collection() {
-    let app = common::setup().await;
-    let collection = create_test_collection(&app).await;
+    let (app, token) = common::setup().await; // Destructure the tuple
+    let collection = create_test_collection(&app, &token).await; // Pass token
     let collection_id = collection["id"].as_str().unwrap();
 
     let response = app
@@ -145,6 +150,7 @@ async fn test_delete_collection() {
             Request::builder()
                 .method(http::Method::DELETE)
                 .uri(format!("/collections/{}", collection_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -159,6 +165,7 @@ async fn test_delete_collection() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/collections/{}", collection_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )

@@ -11,7 +11,7 @@ mod common;
 
 #[tokio::test]
 async fn test_get_one_file() {
-    let app = common::setup().await;
+    let (app, token) = common::setup().await; // Destructure the tuple
 
     // IDs from seed.sql
     let file_id = "f1a2b3c4-5d6e-7f8d-9f0f-f1b2d3a4b5e6";
@@ -22,6 +22,7 @@ async fn test_get_one_file() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/files/{}", file_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -44,7 +45,7 @@ async fn test_get_one_file() {
 
 #[tokio::test]
 async fn test_get_all_files_for_request() {
-    let app = common::setup().await;
+    let (app, token) = common::setup().await; // Destructure the tuple
 
     // This ID is from the seed.sql file
     let request_id = "d1e2f3a4-5b6c-7d8e-9f0a-b1c2d3e4f5f6";
@@ -54,6 +55,7 @@ async fn test_get_all_files_for_request() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/requests/{}/files", request_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -77,7 +79,7 @@ async fn test_get_all_files_for_request() {
 
 #[tokio::test]
 async fn test_get_one_file_not_found() {
-    let app = common::setup().await;
+    let (app, token) = common::setup().await; // Destructure the tuple
     let non_existent_id = "00000000-0000-0000-0000-000000000000";
 
     let response = app
@@ -85,6 +87,7 @@ async fn test_get_one_file_not_found() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/files/{}", non_existent_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )

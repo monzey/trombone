@@ -8,7 +8,7 @@ use tower::ServiceExt;
 
 mod common;
 
-async fn create_test_request(app: &axum::Router) -> Value {
+async fn create_test_request(app: &axum::Router, token: &str) -> Value {
     let collection_id = "c1d2e3f4-5a6b-7c8d-9e0f-a1b2c3d4e5f6";
 
     let response = app
@@ -18,6 +18,7 @@ async fn create_test_request(app: &axum::Router) -> Value {
                 .method(http::Method::POST)
                 .uri("/requests")
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "collection_id": collection_id,
@@ -39,8 +40,8 @@ async fn create_test_request(app: &axum::Router) -> Value {
 
 #[tokio::test]
 async fn test_create_request() {
-    let app = common::setup().await;
-    let body = create_test_request(&app).await;
+    let (app, token) = common::setup().await;
+    let body = create_test_request(&app, &token).await;
 
     assert_eq!(body["title"], "Sales Invoices for July");
     assert!(body["id"].is_string());
@@ -48,8 +49,8 @@ async fn test_create_request() {
 
 #[tokio::test]
 async fn test_get_request() {
-    let app = common::setup().await;
-    let request = create_test_request(&app).await;
+    let (app, token) = common::setup().await;
+    let request = create_test_request(&app, &token).await;
     let request_id = request["id"].as_str().unwrap();
 
     let response = app
@@ -57,6 +58,7 @@ async fn test_get_request() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/requests/{}", request_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -72,15 +74,16 @@ async fn test_get_request() {
 
 #[tokio::test]
 async fn test_get_all_requests() {
-    let app = common::setup().await;
-    create_test_request(&app).await;
-    create_test_request(&app).await;
+    let (app, token) = common::setup().await;
+    create_test_request(&app, &token).await;
+    create_test_request(&app, &token).await;
 
     let response = app
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
                 .uri("/requests")
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -96,8 +99,8 @@ async fn test_get_all_requests() {
 
 #[tokio::test]
 async fn test_update_request() {
-    let app = common::setup().await;
-    let request = create_test_request(&app).await;
+    let (app, token) = common::setup().await;
+    let request = create_test_request(&app, &token).await;
     let request_id = request["id"].as_str().unwrap();
 
     let response = app
@@ -106,6 +109,7 @@ async fn test_update_request() {
                 .method(http::Method::PATCH)
                 .uri(format!("/requests/{}", request_id))
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "title": "Updated Title"
@@ -126,8 +130,8 @@ async fn test_update_request() {
 
 #[tokio::test]
 async fn test_delete_request() {
-    let app = common::setup().await;
-    let request = create_test_request(&app).await;
+    let (app, token) = common::setup().await;
+    let request = create_test_request(&app, &token).await;
     let request_id = request["id"].as_str().unwrap();
 
     let response = app
@@ -136,6 +140,7 @@ async fn test_delete_request() {
             Request::builder()
                 .method(http::Method::DELETE)
                 .uri(format!("/requests/{}", request_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -150,6 +155,7 @@ async fn test_delete_request() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/requests/{}", request_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )

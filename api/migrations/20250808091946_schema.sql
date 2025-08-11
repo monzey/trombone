@@ -9,7 +9,7 @@ CREATE TABLE firms (
 -- Create users table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    firm_id UUID NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+    firm_id UUID NULL REFERENCES firms(id) ON DELETE CASCADE,
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,

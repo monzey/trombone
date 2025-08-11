@@ -69,7 +69,7 @@ pub async fn get_one(
         .into_iter()
         .map(|u| UserResponse {
             id: u.id,
-            firm: firm.clone(),
+            firm: Some(firm.clone()),
             email: u.email,
             first_name: u.first_name,
             last_name: u.last_name,

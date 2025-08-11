@@ -9,7 +9,7 @@ use tower::ServiceExt; // for `oneshot`
 
 mod common;
 
-async fn create_test_firm(app: &axum::Router) -> Value {
+async fn create_test_firm(app: &axum::Router, token: &str) -> Value {
     let response = app
         .clone()
         .oneshot(
@@ -17,6 +17,7 @@ async fn create_test_firm(app: &axum::Router) -> Value {
                 .method(http::Method::POST)
                 .uri("/firms")
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::from(
                     serde_json::to_vec(&json!({ "name": "Another Test Firm" })).unwrap(),
                 ))
@@ -30,16 +31,16 @@ async fn create_test_firm(app: &axum::Router) -> Value {
 
 #[tokio::test]
 async fn test_create_firm() {
-    let app = common::setup().await;
-    let body = create_test_firm(&app).await;
+    let (app, token) = common::setup().await;
+    let body = create_test_firm(&app, &token).await;
     assert_eq!(body["name"], "Another Test Firm");
     assert!(body["id"].is_string());
 }
 
 #[tokio::test]
 async fn test_get_firm() {
-    let app = common::setup().await;
-    let firm = create_test_firm(&app).await;
+    let (app, token) = common::setup().await;
+    let firm = create_test_firm(&app, &token).await;
     let firm_id = firm["id"].as_str().unwrap();
 
     let response = app
@@ -47,6 +48,7 @@ async fn test_get_firm() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/firms/{}", firm_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -62,8 +64,8 @@ async fn test_get_firm() {
 
 #[tokio::test]
 async fn test_update_firm() {
-    let app = common::setup().await;
-    let firm = create_test_firm(&app).await;
+    let (app, token) = common::setup().await;
+    let firm = create_test_firm(&app, &token).await;
     let firm_id = firm["id"].as_str().unwrap();
 
     let response = app
@@ -72,6 +74,7 @@ async fn test_update_firm() {
                 .method(http::Method::PATCH)
                 .uri(format!("/firms/{}", firm_id))
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::from(
                     serde_json::to_vec(&json!({ "name": "Updated Test Firm" })).unwrap(),
                 ))
@@ -89,8 +92,8 @@ async fn test_update_firm() {
 
 #[tokio::test]
 async fn test_delete_firm() {
-    let app = common::setup().await;
-    let firm = create_test_firm(&app).await;
+    let (app, token) = common::setup().await;
+    let firm = create_test_firm(&app, &token).await;
     let firm_id = firm["id"].as_str().unwrap();
 
     let response = app
@@ -99,6 +102,7 @@ async fn test_delete_firm() {
             Request::builder()
                 .method(http::Method::DELETE)
                 .uri(format!("/firms/{}", firm_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -113,6 +117,7 @@ async fn test_delete_firm() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/firms/{}", firm_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .body(Body::empty())
                 .unwrap(),
         )

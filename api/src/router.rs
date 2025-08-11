@@ -35,9 +35,9 @@ use crate::auth::auth_middleware;
 pub fn router(app_state: AppState) -> Router {
     // Public routes for users (register, login)
     let public_users_router = Router::new()
-        .route("/", post(create_user)) // Register
-        .route("/login", post(login))
-        .with_state(app_state.clone()); // Login
+        .route("/register", post(create_user)) // Register
+        .route("/login", post(login)) // Login
+        .with_state(app_state.clone());
 
     // Protected routes for users (get, update, delete)
     let protected_users_router = Router::new()
@@ -103,10 +103,10 @@ pub fn router(app_state: AppState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             app_state.clone(),
             auth_middleware,
-        )); // Apply middleware
+        ));
 
     Router::new()
-        .nest("/users", public_users_router) // Public user routes
+        .nest("/", public_users_router) // Public user routes
         .merge(protected_routes) // Merge protected routes
         .with_state(app_state)
 }

@@ -8,7 +8,7 @@ use uuid::Uuid;
 #[derive(Debug, FromRow, Clone)]
 pub struct User {
     pub id: Uuid,
-    pub firm_id: Uuid,
+    pub firm_id: Option<Uuid>,
     pub email: String,
     pub password_hash: String,
     pub first_name: String,
@@ -20,7 +20,7 @@ pub struct User {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserResponse {
     pub id: Uuid,
-    pub firm: crate::model::firm::Firm,
+    pub firm: Option<crate::model::firm::Firm>,
     pub email: String,
     pub first_name: String,
     pub last_name: String,
@@ -30,7 +30,7 @@ pub struct UserResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateUserPayload {
-    pub firm_id: Uuid,
+    pub firm_id: Option<Uuid>,
     pub email: String,
     pub password: String,
     pub first_name: String,
@@ -54,3 +54,4 @@ pub struct LoginPayload {
 pub struct LoginResponse {
     pub token: String,
 }
+

@@ -8,7 +8,7 @@ use tower::ServiceExt; // for `oneshot`
 
 mod common;
 
-async fn create_test_client(app: &axum::Router) -> Value {
+async fn create_test_client(app: &axum::Router, token: &str) -> Value {
     let firm_id = "a6a7572a-5553-4653-a733-35a0b602790f"; // From seed.sql
     let response = app
         .clone()
@@ -17,6 +17,7 @@ async fn create_test_client(app: &axum::Router) -> Value {
                 .method(http::Method::POST)
                 .uri("/clients")
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "firm_id": firm_id,
@@ -29,14 +30,18 @@ async fn create_test_client(app: &axum::Router) -> Value {
         )
         .await
         .unwrap();
+    let status = response.status();
     let body = response.into_body().collect().await.unwrap().to_bytes();
+    println!("Response Status: {}", status);
+    println!("Response Body: {}", String::from_utf8_lossy(&body));
+    assert!(status.is_success(), "Expected a successful status code, got: {}", status);
     serde_json::from_slice(&body).unwrap()
 }
 
 #[tokio::test]
 async fn test_create_client() {
-    let app = common::setup().await;
-    let body = create_test_client(&app).await;
+    let (app, token) = common::setup().await; // Get token from setup
+    let body = create_test_client(&app, &token).await; // Pass token to create_test_client
 
     assert_eq!(body["company_name"], "Test Client Company");
     assert_eq!(body["email"], "client@example.com");
@@ -45,8 +50,8 @@ async fn test_create_client() {
 
 #[tokio::test]
 async fn test_get_client() {
-    let app = common::setup().await;
-    let client = create_test_client(&app).await;
+    let (app, token) = common::setup().await; // Get token from setup
+    let client = create_test_client(&app, &token).await;
     let client_id = client["id"].as_str().unwrap();
 
     let response = app
@@ -54,6 +59,7 @@ async fn test_get_client() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/clients/{}", client_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -69,8 +75,8 @@ async fn test_get_client() {
 
 #[tokio::test]
 async fn test_update_client() {
-    let app = common::setup().await;
-    let client = create_test_client(&app).await;
+    let (app, token) = common::setup().await; // Get token from setup
+    let client = create_test_client(&app, &token).await;
     let client_id = client["id"].as_str().unwrap();
 
     let response = app
@@ -79,6 +85,7 @@ async fn test_update_client() {
                 .method(http::Method::PATCH)
                 .uri(format!("/clients/{}", client_id))
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "firm_id": client["firm_id"],
@@ -102,8 +109,8 @@ async fn test_update_client() {
 
 #[tokio::test]
 async fn test_delete_client() {
-    let app = common::setup().await;
-    let client = create_test_client(&app).await;
+    let (app, token) = common::setup().await; // Get token from setup
+    let client = create_test_client(&app, &token).await;
     let client_id = client["id"].as_str().unwrap();
 
     let response = app
@@ -112,6 +119,7 @@ async fn test_delete_client() {
             Request::builder()
                 .method(http::Method::DELETE)
                 .uri(format!("/clients/{}", client_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -126,6 +134,7 @@ async fn test_delete_client() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/clients/{}", client_id))
+                .header(http::header::AUTHORIZATION, format!("Bearer {}", token)) // Add Authorization header
                 .body(Body::empty())
                 .unwrap(),
         )

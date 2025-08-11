@@ -65,7 +65,7 @@ pub async fn get_all(
             };
             let user = UserResponse {
                 id: row.user_id,
-                firm: user_firm,
+                firm: Some(user_firm),
                 email: row.user_email,
                 first_name: row.first_name,
                 last_name: row.last_name,
@@ -139,7 +139,7 @@ pub async fn get_one(
     };
     let user = UserResponse {
         id: row.user_id,
-        firm: user_firm,
+        firm: Some(user_firm),
         email: row.user_email,
         first_name: row.first_name,
         last_name: row.last_name,

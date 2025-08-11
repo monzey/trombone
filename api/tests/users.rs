@@ -11,14 +11,15 @@ mod common;
 use uuid::Uuid;
 
 async fn create_test_user(app: &axum::Router) -> Value {
-    let firm_id = "a6a7572a-5553-4653-a733-35a0b602790f"; // From seed.sql
+    // No token needed for public route
+    let firm_id = "a6a7572a-5553-4653-a733-35a0b602790f";
     let email = format!("test.user+{}@example.com", Uuid::new_v4());
     let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method(http::Method::POST)
-                .uri("/users")
+                .uri("/register")
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
                 .body(Body::from(
                     serde_json::to_vec(&json!({
@@ -36,13 +37,12 @@ async fn create_test_user(app: &axum::Router) -> Value {
         .unwrap();
     let body = response.into_body().collect().await.unwrap().to_bytes();
 
-    println!("Response body: {}", String::from_utf8_lossy(&body));
     serde_json::from_slice(&body).unwrap()
 }
 
 #[tokio::test]
 async fn test_create_user() {
-    let app = common::setup().await;
+    let (app, _token) = common::setup().await;
     let body = create_test_user(&app).await;
 
     assert!(
@@ -56,7 +56,7 @@ async fn test_create_user() {
 
 #[tokio::test]
 async fn test_get_user() {
-    let app = common::setup().await;
+    let (app, token) = common::setup().await; // Destructure the tuple
     let user = create_test_user(&app).await;
     let user_id = user["id"].as_str().unwrap();
 
@@ -64,7 +64,8 @@ async fn test_get_user() {
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
-                .uri(format!("/users/{}", user_id))
+                .uri(format!("/users/{user_id}"))
+                .header(http::header::AUTHORIZATION, format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -80,11 +81,9 @@ async fn test_get_user() {
 
 #[tokio::test]
 async fn test_update_user() {
-    let app = common::setup().await;
+    let (app, token) = common::setup().await; // Destructure the tuple
     let user = create_test_user(&app).await;
     let user_id = user["id"].as_str().unwrap();
-
-    print!("{}", user_id);
 
     let updated_email = format!("updated.user+{}@example.com", Uuid::new_v4());
 
@@ -92,8 +91,9 @@ async fn test_update_user() {
         .oneshot(
             Request::builder()
                 .method(http::Method::PATCH)
-                .uri(format!("/users/{}", user_id))
+                .uri(format!("/users/{user_id}"))
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                .header(http::header::AUTHORIZATION, format!("Bearer {token}"))
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "first_name": "UpdatedFirst",
@@ -118,7 +118,7 @@ async fn test_update_user() {
 
 #[tokio::test]
 async fn test_delete_user() {
-    let app = common::setup().await;
+    let (app, token) = common::setup().await; // Destructure the tuple
     let user = create_test_user(&app).await;
     let user_id = user["id"].as_str().unwrap();
 
@@ -127,7 +127,8 @@ async fn test_delete_user() {
         .oneshot(
             Request::builder()
                 .method(http::Method::DELETE)
-                .uri(format!("/users/{}", user_id))
+                .uri(format!("/users/{user_id}"))
+                .header(http::header::AUTHORIZATION, format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -141,7 +142,8 @@ async fn test_delete_user() {
         .oneshot(
             Request::builder()
                 .method(http::Method::GET)
-                .uri(format!("/users/{}", user_id))
+                .uri(format!("/users/{user_id}"))
+                .header(http::header::AUTHORIZATION, format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )

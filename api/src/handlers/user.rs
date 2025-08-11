@@ -44,12 +44,12 @@ pub async fn get_all(
             last_name: row.last_name,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            firm: Firm {
+            firm: Some(Firm {
                 id: row.firm_id,
                 name: row.firm_name,
                 created_at: row.firm_created_at,
                 updated_at: row.firm_updated_at,
-            },
+            }),
         })
         .collect();
 
@@ -83,12 +83,12 @@ pub async fn get_one(
         last_name: user.last_name,
         created_at: user.created_at,
         updated_at: user.updated_at,
-        firm: Firm {
+        firm: Some(Firm {
             id: user.firm_id,
             name: user.firm_name,
             created_at: user.firm_created_at,
             updated_at: user.firm_updated_at,
-        },
+        }),
     };
 
     Ok(Json(user_response))
