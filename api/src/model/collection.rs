@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::model::client::Client;
+use crate::model::user::User;
+
 // Represents a specific request for a set of documents (e.g., "Q3 2025 VAT")
 
 #[derive(Debug, Serialize, FromRow)]
@@ -10,6 +13,19 @@ pub struct Collection {
     pub id: Uuid,
     pub client_id: Uuid,
     pub user_id: Uuid,
+    pub title: String,
+    pub status: String,
+    pub access_token: String,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CollectionResponse {
+    pub id: Uuid,
+    pub client: Client,
+    pub user: User,
     pub title: String,
     pub status: String,
     pub access_token: String,

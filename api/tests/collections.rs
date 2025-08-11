@@ -45,6 +45,8 @@ async fn test_create_collection() {
 
     assert_eq!(body["title"], "Q3 2025 VAT");
     assert!(body["id"].is_string());
+    assert!(body["client"].is_object());
+    assert!(body["user"].is_object());
 }
 
 #[tokio::test]
@@ -69,6 +71,8 @@ async fn test_get_collection() {
     let body: Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(body["id"], collection_id);
+    assert!(body["client"].is_object());
+    assert!(body["user"].is_object());
 }
 
 #[tokio::test]
@@ -93,6 +97,8 @@ async fn test_get_all_collections() {
     let body: Vec<Value> = serde_json::from_slice(&body).unwrap();
 
     assert!(body.len() >= 2);
+    assert!(body[0]["client"].is_object());
+    assert!(body[0]["user"].is_object());
 }
 
 #[tokio::test]
@@ -123,6 +129,8 @@ async fn test_update_collection() {
     let body: Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(body["title"], "Q4 2025 VAT");
+    assert!(body["client"].is_object());
+    assert!(body["user"].is_object());
 }
 
 #[tokio::test]
