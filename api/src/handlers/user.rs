@@ -1,17 +1,24 @@
 use crate::app_error::AppError;
 use crate::model::firm::Firm;
-use crate::model::user::{CreateUserPayload, UpdateUserPayload, User, UserResponse};
+use crate::model::user::{
+    CreateUserPayload, LoginPayload, LoginResponse, UpdateUserPayload, User, UserResponse,
+};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     Json,
 };
-use bcrypt::{hash, DEFAULT_COST};
-use sqlx::PgPool;
+use bcrypt::{hash, verify, DEFAULT_COST};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use uuid::Uuid;
 
+use crate::app_state::AppState;
+use crate::auth::Claims;
+
 // GET /users
-pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<UserResponse>>, AppError> {
+pub async fn get_all(
+    State(app_state): State<AppState>,
+) -> Result<Json<Vec<UserResponse>>, AppError> {
     let users = sqlx::query!(
         r#"
         SELECT
@@ -21,7 +28,7 @@ pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<UserResponse
         JOIN firms f ON u.firm_id = f.id
         "#
     )
-    .fetch_all(&pool)
+    .fetch_all(&app_state.db_pool)
     .await
     .map_err(|e| {
         eprintln!("Failed to fetch users: {}", e);
@@ -51,7 +58,7 @@ pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<UserResponse
 
 // GET /users/:id
 pub async fn get_one(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<UserResponse>, AppError> {
     let user = sqlx::query!(
@@ -65,7 +72,7 @@ pub async fn get_one(
         "#,
         id
     )
-    .fetch_one(&pool)
+    .fetch_one(&app_state.db_pool)
     .await
     .map_err(|_| AppError::new(StatusCode::NOT_FOUND, "User not found"))?;
 
@@ -89,7 +96,7 @@ pub async fn get_one(
 
 // POST /users
 pub async fn create(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Json(payload): Json<CreateUserPayload>,
 ) -> Result<Json<UserResponse>, AppError> {
     if payload.password.len() < 8 {
@@ -116,7 +123,7 @@ pub async fn create(
         hashed_password,
         payload.firm_id
     )
-    .fetch_one(&pool)
+    .fetch_one(&app_state.db_pool)
     .await
     .map_err(|e| {
         eprintln!("Error inserting user : {}", e);
@@ -128,17 +135,69 @@ pub async fn create(
         AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Error creating user.")
     })?;
 
-    get_one(State(pool), Path(user.id)).await
+    get_one(State(app_state), Path(user.id)).await
+}
+
+// POST /users/login
+pub async fn login(
+    State(app_state): State<AppState>,
+    Json(payload): Json<LoginPayload>,
+) -> Result<Json<LoginResponse>, AppError> {
+    let user = sqlx::query_as!(
+        User,
+        "SELECT * FROM users WHERE email = $1",
+        payload.email.to_lowercase()
+    )
+    .fetch_optional(&app_state.db_pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Error fetching user for login: {}", e);
+        AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Login failed.")
+    })?
+    .ok_or(AppError::new(
+        StatusCode::UNAUTHORIZED,
+        "Invalid credentials.",
+    ))?;
+
+    let is_valid_password = verify(&payload.password, &user.password_hash).map_err(|e| {
+        eprintln!("Error verifying password: {}", e);
+        AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Login failed.")
+    })?;
+
+    if !is_valid_password {
+        return Err(AppError::new(
+            StatusCode::UNAUTHORIZED,
+            "Invalid credentials.",
+        ));
+    }
+
+    let expiration_time = chrono::Utc::now() + chrono::Duration::hours(24);
+    let claims = Claims {
+        sub: user.id,
+        exp: expiration_time.timestamp() as usize,
+    };
+
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(app_state.jwt_secret.as_ref()),
+    )
+    .map_err(|e| {
+        eprintln!("Error encoding token: {}", e);
+        AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Login failed.")
+    })?;
+
+    Ok(Json(LoginResponse { token }))
 }
 
 // PATCH /users/:id
 pub async fn update(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateUserPayload>,
 ) -> Result<Json<UserResponse>, AppError> {
     let mut user = sqlx::query_as!(User, "SELECT * FROM users WHERE id = $1", id)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db_pool)
         .await
         .map_err(|_| AppError::new(StatusCode::NOT_FOUND, "User not found"))?;
 
@@ -161,23 +220,23 @@ pub async fn update(
         user.email,
         id
     )
-    .execute(&pool)
+    .execute(&app_state.db_pool)
     .await
     .map_err(|e| {
         eprintln!("Failed to update user: {}", e);
         AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Error updating user")
     })?;
 
-    get_one(State(pool), Path(id)).await
+    get_one(State(app_state), Path(id)).await
 }
 
 // DELETE /users/:id
 pub async fn delete(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let rows_affected = sqlx::query!("DELETE FROM users WHERE id = $1", id)
-        .execute(&pool)
+        .execute(&app_state.db_pool)
         .await
         .map_err(|_| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Error deleting user"))?
         .rows_affected();

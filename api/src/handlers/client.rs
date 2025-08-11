@@ -5,12 +5,36 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
-// GET /clients
+use crate::app_state::AppState;
+
+pub async fn create(
+    State(app_state): State<AppState>,
+    Json(payload): Json<CreateClientPayload>,
+) -> Result<Json<ClientResponse>, StatusCode> {
+    let client = sqlx::query!(
+        r#"
+        INSERT INTO clients (firm_id, company_name, email)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        "#,
+        payload.firm_id,
+        payload.company_name,
+        payload.email,
+    )
+    .fetch_one(&app_state.db_pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Failed to create client: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    get_one(State(app_state), Path(client.id)).await
+}
+
 pub async fn get_all(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
 ) -> Result<Json<Vec<ClientResponse>>, StatusCode> {
     let clients = sqlx::query!(
         r#"
@@ -21,7 +45,7 @@ pub async fn get_all(
         JOIN firms f ON c.firm_id = f.id
         "#
     )
-    .fetch_all(&pool)
+    .fetch_all(&app_state.db_pool)
     .await
     .map_err(|e| {
         eprintln!("Failed to fetch clients: {}", e);
@@ -48,9 +72,8 @@ pub async fn get_all(
     Ok(Json(client_responses))
 }
 
-// GET /clients/:id
 pub async fn get_one(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ClientResponse>, StatusCode> {
     let client = sqlx::query!(
@@ -64,7 +87,7 @@ pub async fn get_one(
         "#,
         id
     )
-    .fetch_one(&pool)
+    .fetch_one(&app_state.db_pool)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -85,39 +108,13 @@ pub async fn get_one(
     Ok(Json(client_response))
 }
 
-// POST /clients
-pub async fn create(
-    State(pool): State<PgPool>,
-    Json(payload): Json<CreateClientPayload>,
-) -> Result<Json<ClientResponse>, StatusCode> {
-    let client = sqlx::query!(
-        r#"
-        INSERT INTO clients (firm_id, company_name, email)
-        VALUES ($1, $2, $3)
-        RETURNING id
-        "#,
-        payload.firm_id,
-        payload.company_name,
-        payload.email,
-    )
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| {
-        eprintln!("Failed to create client: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    get_one(State(pool), Path(client.id)).await
-}
-
-// PATCH /clients/:id
 pub async fn update(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateClientPayload>,
 ) -> Result<Json<ClientResponse>, StatusCode> {
     let mut client = sqlx::query_as!(Client, "SELECT * FROM clients WHERE id = $1", id)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -139,20 +136,19 @@ pub async fn update(
         client.email,
         id
     )
-    .execute(&pool)
+    .execute(&app_state.db_pool)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    get_one(State(pool), Path(id)).await
+    get_one(State(app_state), Path(id)).await
 }
 
-// DELETE /clients/:id
 pub async fn delete(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let rows_affected = sqlx::query!("DELETE FROM clients WHERE id = $1", id)
-        .execute(&pool)
+        .execute(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .rows_affected();
@@ -163,3 +159,4 @@ pub async fn delete(
 
     Ok(StatusCode::NO_CONTENT)
 }
+

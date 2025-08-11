@@ -5,20 +5,23 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::app_state::AppState;
+
 // GET /requests
-pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<RequestResponse>>, StatusCode> {
+pub async fn get_all(
+    State(app_state): State<AppState>,
+) -> Result<Json<Vec<RequestResponse>>, StatusCode> {
     // This is inefficient due to N+1, but simple. A real implementation would use a more complex query.
     let requests = sqlx::query_as!(Request, "SELECT * FROM requests")
-        .fetch_all(&pool)
+        .fetch_all(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut responses = Vec::new();
     for request in requests {
-        let response = get_one(State(pool.clone()), Path(request.id)).await?.0;
+        let response = get_one(State(app_state.clone()), Path(request.id)).await?.0;
         responses.push(response);
     }
 
@@ -27,17 +30,18 @@ pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<RequestRespo
 
 // GET /requests/:id
 pub async fn get_one(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<RequestResponse>, StatusCode> {
     let request = sqlx::query_as!(Request, "SELECT * FROM requests WHERE id = $1", id)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let collection_response = collection_handler::get_one(State(pool), Path(request.collection_id))
-        .await?
-        .0;
+    let collection_response =
+        collection_handler::get_one(State(app_state), Path(request.collection_id))
+            .await?
+            .0;
 
     let request_response = RequestResponse {
         id: request.id,
@@ -54,7 +58,7 @@ pub async fn get_one(
 
 // POST /requests
 pub async fn create(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Json(payload): Json<CreateRequestPayload>,
 ) -> Result<Json<RequestResponse>, StatusCode> {
     let request = sqlx::query!(
@@ -67,24 +71,24 @@ pub async fn create(
         payload.title,
         payload.description
     )
-    .fetch_one(&pool)
+    .fetch_one(&app_state.db_pool)
     .await
     .map_err(|e| {
         eprintln!("Failed to create request: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    get_one(State(pool), Path(request.id)).await
+    get_one(State(app_state), Path(request.id)).await
 }
 
 // PATCH /requests/:id
 pub async fn update(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateRequestPayload>,
 ) -> Result<Json<RequestResponse>, StatusCode> {
     let mut request = sqlx::query_as!(Request, "SELECT * FROM requests WHERE id = $1", id)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -93,8 +97,8 @@ pub async fn update(
     }
 
     if let Some(description) = payload.description {
-            request.description = Some(description);
-        }
+        request.description = Some(description);
+    }
 
     if let Some(status) = payload.status {
         request.status = status;
@@ -111,20 +115,20 @@ pub async fn update(
         request.status,
         id
     )
-    .execute(&pool)
+    .execute(&app_state.db_pool)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    get_one(State(pool), Path(id)).await
+    get_one(State(app_state), Path(id)).await
 }
 
 // DELETE /requests/:id
 pub async fn delete(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let rows_affected = sqlx::query!("DELETE FROM requests WHERE id = $1", id)
-        .execute(&pool)
+        .execute(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .rows_affected();
@@ -135,3 +139,4 @@ pub async fn delete(
 
     Ok(StatusCode::NO_CONTENT)
 }
+

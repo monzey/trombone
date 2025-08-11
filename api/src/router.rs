@@ -25,13 +25,30 @@ use crate::handlers::{
     },
     user::{
         create as create_user, delete as delete_user, get_all as get_all_users,
-        get_one as get_one_user, update as update_user,
+        get_one as get_one_user, login, update as update_user,
     },
 };
 
-use sqlx::PgPool;
+use crate::app_state::AppState;
+use crate::auth::auth_middleware;
 
-pub fn router(pool: PgPool) -> Router {
+pub fn router(app_state: AppState) -> Router {
+    // Public routes for users (register, login)
+    let public_users_router = Router::new()
+        .route("/", post(create_user)) // Register
+        .route("/login", post(login))
+        .with_state(app_state.clone()); // Login
+
+    // Protected routes for users (get, update, delete)
+    let protected_users_router = Router::new()
+        .route("/", get(get_all_users))
+        .route(
+            "/:id",
+            get(get_one_user).patch(update_user).delete(delete_user),
+        )
+        .with_state(app_state.clone());
+
+    // All other routers (clients, firms, files, requests, collections) are assumed to be fully protected
     let clients_router = Router::new()
         .route("/", post(create_client).get(get_all_clients))
         .route(
@@ -41,22 +58,18 @@ pub fn router(pool: PgPool) -> Router {
                 .delete(delete_client),
         );
 
-    let users_router = Router::new()
-        .route("/", post(create_user).get(get_all_users))
-        .route(
-            "/:id",
-            get(get_one_user).patch(update_user).delete(delete_user),
-        );
-
     let firms_router = Router::new()
         .route("/", post(create_firm).get(get_all_firms))
         .route(
             "/:id",
             get(get_one_firm).patch(update_firm).delete(delete_firm),
-        );
+        )
+        .with_state(app_state.clone());
 
-    // Note: File routes are different. Upload is on a request, get_all is also on a request.
-    let files_router = Router::new().route("/:id", get(get_one_file).delete(delete_file));
+    let files_router = Router::new()
+        .route("/", post(upload_file)) // Upload is now on /files
+        .route("/:id", get(get_one_file).delete(delete_file))
+        .with_state(app_state.clone());
 
     let requests_router = Router::new()
         .route("/", post(create_request).get(get_all_requests))
@@ -66,10 +79,8 @@ pub fn router(pool: PgPool) -> Router {
                 .patch(update_request)
                 .delete(delete_request),
         )
-        .route(
-            "/:request_id/files",
-            get(get_all_for_request).post(upload_file),
-        );
+        .route("/:request_id/files", get(get_all_for_request)) // Removed post(upload_file) as it's now on /files
+        .with_state(app_state.clone());
 
     let collections_router = Router::new()
         .route("/", post(create_collection).get(get_all_collections))
@@ -78,15 +89,25 @@ pub fn router(pool: PgPool) -> Router {
             get(get_one_collection)
                 .patch(update_collection)
                 .delete(delete_collection),
-        );
+        )
+        .with_state(app_state.clone());
 
-    Router::new()
+    // Group all protected routes and apply the middleware
+    let protected_routes = Router::new()
+        .nest("/users", protected_users_router) // Protected user routes
         .nest("/clients", clients_router)
-        .nest("/users", users_router)
         .nest("/firms", firms_router)
         .nest("/files", files_router)
         .nest("/requests", requests_router)
         .nest("/collections", collections_router)
-        .with_state(pool)
+        .layer(axum::middleware::from_fn_with_state(
+            app_state.clone(),
+            auth_middleware,
+        )); // Apply middleware
+
+    Router::new()
+        .nest("/users", public_users_router) // Public user routes
+        .merge(protected_routes) // Merge protected routes
+        .with_state(app_state)
 }
 

@@ -5,29 +5,26 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
+
+use crate::app_state::AppState;
 
 // GET /requests/:request_id/files
 pub async fn get_all_for_request(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(request_id): Path<Uuid>,
 ) -> Result<Json<Vec<FileResponse>>, StatusCode> {
-    let request_response = request_handler::get_one(State(pool.clone()), Path(request_id))
+    let request_response = request_handler::get_one(State(app_state.clone()), Path(request_id))
         .await? // Ensure the request exists
         .0;
 
-    let files = sqlx::query_as!(
-        File,
-        "SELECT * FROM files WHERE request_id = $1",
-        request_id
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| {
-        eprintln!("Failed to fetch files for request: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let files = sqlx::query_as!(File, "SELECT id, request_id, file_name, storage_key, file_size, mime_type, created_at, updated_at FROM files WHERE request_id = $1", request_id)
+        .fetch_all(&app_state.db_pool)
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to fetch files for request: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let file_responses = files
         .into_iter()
@@ -48,15 +45,15 @@ pub async fn get_all_for_request(
 
 // GET /files/:id
 pub async fn get_one(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<FileResponse>, StatusCode> {
-    let file = sqlx::query_as!(File, "SELECT * FROM files WHERE id = $1", id)
-        .fetch_one(&pool)
+    let file = sqlx::query_as!(File, "SELECT id, request_id, file_name, storage_key, file_size, mime_type, created_at, updated_at FROM files WHERE id = $1", id)
+        .fetch_one(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let request_response = request_handler::get_one(State(pool), Path(file.request_id))
+    let request_response = request_handler::get_one(State(app_state), Path(file.request_id))
         .await?
         .0;
 
@@ -93,4 +90,3 @@ pub async fn delete(Path(id): Path<Uuid>) -> Result<StatusCode, StatusCode> {
     eprintln!("Placeholder for file deletion for file {}", id);
     Err(StatusCode::NOT_IMPLEMENTED)
 }
-

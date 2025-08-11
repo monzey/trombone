@@ -1,3 +1,4 @@
+use crate::app_error::AppError;
 use crate::model::client::{Client, ClientResponse};
 use crate::model::firm::{CreateFirmPayload, Firm, FirmResponse, UpdateFirmPayload};
 use crate::model::user::{User, UserResponse};
@@ -6,13 +7,35 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
-// GET /firms
-pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<Firm>>, StatusCode> {
+use crate::app_state::AppState;
+
+pub async fn create(
+    State(app_state): State<AppState>,
+    Json(payload): Json<CreateFirmPayload>,
+) -> Result<Json<FirmResponse>, AppError> {
+    let firm = sqlx::query!(
+        r#"
+        INSERT INTO firms (name)
+        VALUES ($1)
+        RETURNING id
+        "#,
+        payload.name,
+    )
+    .fetch_one(&app_state.db_pool)
+    .await
+    .map_err(|e| {
+        eprintln!("Error inserting firm : {}", e);
+        AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Error creating firm.")
+    })?;
+
+    get_one(State(app_state), Path(firm.id)).await
+}
+
+pub async fn get_all(State(app_state): State<AppState>) -> Result<Json<Vec<Firm>>, StatusCode> {
     let firms = sqlx::query_as!(Firm, "SELECT * FROM firms")
-        .fetch_all(&pool)
+        .fetch_all(&app_state.db_pool)
         .await
         .map_err(|e| {
             eprintln!("Failed to fetch firms: {}", e);
@@ -22,44 +45,60 @@ pub async fn get_all(State(pool): State<PgPool>) -> Result<Json<Vec<Firm>>, Stat
     Ok(Json(firms))
 }
 
-// GET /firms/:id
 pub async fn get_one(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<FirmResponse>, StatusCode> {
+) -> Result<Json<FirmResponse>, AppError> {
+    // Changed return type to AppError
     let firm = sqlx::query_as!(Firm, "SELECT * FROM firms WHERE id = $1", id)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db_pool)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| AppError::new(StatusCode::NOT_FOUND, "Firm not found"))?;
 
     let users_raw = sqlx::query_as!(User, "SELECT * FROM users WHERE firm_id = $1", id)
-        .fetch_all(&pool)
+        .fetch_all(&app_state.db_pool)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    let users = users_raw.into_iter().map(|u| UserResponse { 
-        id: u.id, 
-        firm: firm.clone(), 
-        email: u.email, 
-        first_name: u.first_name, 
-        last_name: u.last_name, 
-        created_at: u.created_at, 
-        updated_at: u.updated_at 
-    }).collect();
+        .map_err(|_| {
+            AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to fetch users for firm",
+            )
+        })?;
+
+    let users = users_raw
+        .into_iter()
+        .map(|u| UserResponse {
+            id: u.id,
+            firm: firm.clone(),
+            email: u.email,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            created_at: u.created_at,
+            updated_at: u.updated_at,
+        })
+        .collect();
 
     let clients_raw = sqlx::query_as!(Client, "SELECT * FROM clients WHERE firm_id = $1", id)
-        .fetch_all(&pool)
+        .fetch_all(&app_state.db_pool)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| {
+            AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to fetch clients for firm",
+            )
+        })?;
 
-    let clients = clients_raw.into_iter().map(|c| ClientResponse {
-        id: c.id,
-        firm: firm.clone(),
-        company_name: c.company_name,
-        email: c.email,
-        created_at: c.created_at,
-        updated_at: c.updated_at,
-    }).collect();
+    let clients = clients_raw
+        .into_iter()
+        .map(|c| ClientResponse {
+            id: c.id,
+            firm: firm.clone(),
+            company_name: c.company_name,
+            email: c.email,
+            created_at: c.created_at,
+            updated_at: c.updated_at,
+        })
+        .collect();
 
     let firm_response = FirmResponse {
         id: firm.id,
@@ -73,39 +112,16 @@ pub async fn get_one(
     Ok(Json(firm_response))
 }
 
-// POST /firms
-pub async fn create(
-    State(pool): State<PgPool>,
-    Json(payload): Json<CreateFirmPayload>,
-) -> Result<Json<FirmResponse>, StatusCode> {
-    let firm = sqlx::query!(
-        r#"
-        INSERT INTO firms (name)
-        VALUES ($1)
-        RETURNING id
-        "#,
-        payload.name,
-    )
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| {
-        eprintln!("Failed to create firm: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    get_one(State(pool), Path(firm.id)).await
-}
-
-// PATCH /firms/:id
 pub async fn update(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateFirmPayload>,
-) -> Result<Json<FirmResponse>, StatusCode> {
+) -> Result<Json<FirmResponse>, AppError> {
+    // Changed return type to AppError
     let firm = sqlx::query_as!(Firm, "SELECT * FROM firms WHERE id = $1", id)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db_pool)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| AppError::new(StatusCode::NOT_FOUND, "Firm not found"))?;
 
     let new_name = payload.name.unwrap_or(firm.name);
 
@@ -114,27 +130,28 @@ pub async fn update(
         new_name,
         id
     )
-    .execute(&pool)
+    .execute(&app_state.db_pool)
     .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    .map_err(|_| AppError::new(StatusCode::NOT_FOUND, "Firm not found"))?;
 
-    get_one(State(pool), Path(id)).await
+    get_one(State(app_state), Path(id)).await
 }
 
-// DELETE /firms/:id
 pub async fn delete(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<StatusCode, AppError> {
+    // Changed return type to AppError
     let rows_affected = sqlx::query!("DELETE FROM firms WHERE id = $1", id)
-        .execute(&pool)
+        .execute(&app_state.db_pool)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Error deleting firm"))?
         .rows_affected();
 
     if rows_affected == 0 {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AppError::new(StatusCode::NOT_FOUND, "Firm not found"));
     }
 
     Ok(StatusCode::NO_CONTENT)
 }
+

@@ -43,3 +43,14 @@ pub struct UpdateUserPayload {
     pub last_name: Option<String>,
     pub email: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct LoginPayload {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+}

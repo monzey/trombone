@@ -9,12 +9,13 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
+
+use crate::app_state::AppState;
 
 // GET /collections
 pub async fn get_all(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
 ) -> Result<Json<Vec<CollectionResponse>>, StatusCode> {
     let records = sqlx::query!(
         r#"
@@ -31,7 +32,7 @@ pub async fn get_all(
         JOIN firms f_u ON u.firm_id = f_u.id
         "#
     )
-    .fetch_all(&pool)
+    .fetch_all(&app_state.db_pool)
     .await
     .map_err(|e| {
         eprintln!("Failed to fetch collections: {}", e);
@@ -91,7 +92,7 @@ pub async fn get_all(
 
 // GET /collections/:id
 pub async fn get_one(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<CollectionResponse>, StatusCode> {
     let row = sqlx::query!(
@@ -111,7 +112,7 @@ pub async fn get_one(
         "#,
         id
     )
-    .fetch_one(&pool)
+    .fetch_one(&app_state.db_pool)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -163,7 +164,7 @@ pub async fn get_one(
 
 // POST /collections
 pub async fn create(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Json(payload): Json<CreateCollectionPayload>,
 ) -> Result<Json<CollectionResponse>, StatusCode> {
     let collection = sqlx::query!(
@@ -176,24 +177,24 @@ pub async fn create(
         payload.user_id,
         payload.title,
     )
-    .fetch_one(&pool)
+    .fetch_one(&app_state.db_pool)
     .await
     .map_err(|e| {
         eprintln!("Failed to create collection: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    get_one(State(pool), Path(collection.id)).await
+    get_one(State(app_state), Path(collection.id)).await
 }
 
 // PATCH /collections/:id
 pub async fn update(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateCollectionPayload>,
 ) -> Result<Json<CollectionResponse>, StatusCode> {
     let mut collection = sqlx::query_as!(Collection, "SELECT * FROM collections WHERE id = $1", id)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -225,20 +226,20 @@ pub async fn update(
         collection.expires_at,
         id
     )
-    .execute(&pool)
+    .execute(&app_state.db_pool)
     .await
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    get_one(State(pool), Path(id)).await
+    get_one(State(app_state), Path(id)).await
 }
 
 // DELETE /collections/:id
 pub async fn delete(
-    State(pool): State<PgPool>,
+    State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let rows_affected = sqlx::query!("DELETE FROM collections WHERE id = $1", id)
-        .execute(&pool)
+        .execute(&app_state.db_pool)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .rows_affected();
@@ -249,4 +250,3 @@ pub async fn delete(
 
     Ok(StatusCode::NO_CONTENT)
 }
-
